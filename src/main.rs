@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use num::{BigInt, BigRational, Zero, ToPrimitive};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeSet, HashMap},
     fmt::Debug,
 };
 
@@ -83,20 +83,35 @@ impl Expr {
                                 return None;
                             }
                             if exp >= 0 {
-                                return Some(l.pow(exp.abs().try_into().unwrap()));
+                                Some(l.pow(exp.abs()))
                             } else {
                                 if l.is_zero() {
                                     return None;
                                 }
-                                return Some(BigRational::from_integer(BigInt::from(1)) / l.pow((-exp).try_into().unwrap()));
+                                Some(BigRational::from_integer(BigInt::from(1)) / l.pow(-exp))
                             }
                         } else {
-                            return None;
+                            None
                         }
                     },
                     _ => None,
                 }
             }
+        }
+    }
+
+    fn lazy_evaluate(self) -> Expr {
+        match self {
+            Expr::Value(v) => Expr::Value(v),
+            Expr::Add(left, right) => match (left.lazy_evaluate(), right.lazy_evaluate()) {
+                (Expr::Value(l), Expr::Value(r)) => Expr::Value(l + r),
+                (l, r) => Expr::Add(Box::new(l), Box::new(r)),
+            },
+            Expr::Sub(left, right) => match (left.lazy_evaluate(), right.lazy_evaluate()) {
+                (Expr::Value(l), Expr::Value(r)) => Expr::Value(l - r),
+                (l, r) => Expr::Sub(l, r),
+            }
+            Expr::Mul(, )
         }
     }
 }
@@ -146,7 +161,7 @@ impl PrimeBingo {
         }
     }
 
-    fn _enum_exprs(&self, factors: &Vec<i32>) -> Vec<Expr> {
+    fn _enum_exprs(factors: &Vec<i32>) -> Vec<Expr> {
         if factors.len() == 1 {
             return vec![Expr::Value(BigRational::from_integer(BigInt::from(
                 factors[0],
@@ -154,8 +169,8 @@ impl PrimeBingo {
         }
         let mut exprs = vec![];
         for i in 1..factors.len() {
-            let left = self._enum_exprs(&factors[..i].to_vec());
-            let right = self._enum_exprs(&factors[i..].to_vec());
+            let left = Self::_enum_exprs(&factors[..i].to_vec());
+            let right = Self::_enum_exprs(&factors[i..].to_vec());
             for (l, r) in left.iter().cartesian_product(right.iter()) {
                 exprs.push(Expr::Add(Box::new((*l).clone()), Box::new((*r).clone())));
                 exprs.push(Expr::Sub(Box::new((*l).clone()), Box::new((*r).clone())));
@@ -167,14 +182,14 @@ impl PrimeBingo {
                 exprs.push(Expr::Pow(Box::new((*r).clone()), Box::new((*l).clone())));
             }
         }
-        return exprs;
+        exprs
     }
 
     // 数nが読み上げられたとき、その数から作れる数を列挙する
     fn bingo_numbers(&self, n: usize) -> Vec<BigRational> {
         let mut numbers = BTreeSet::new();
         let factors = self.pf.prime_factors(n);
-        let exprs = self._enum_exprs(&factors);
+        let exprs = Self::_enum_exprs(&factors);
         for expr in exprs {
             if let Some(v) = expr.evaluate() {
                 if v.gt(&BigRational::from_integer(BigInt::from(0))) && v.is_integer() {
@@ -188,26 +203,19 @@ impl PrimeBingo {
 
 fn main() {
     let pg = PrimeBingo::new(99);
-    // let facters = pg.pf.prime_factors(24);
-    // let exprs = pg._enum_exprs(&facters);
-    // for expr in exprs {
-    //     print!("{:?}, ", expr);
-    //     if let Some(v) = expr.clone().evaluate() {
-    //         println!("{}", v);
-    //     } else {
-    //         println!("None");
-    //     }
-    // }
+    let mut bingo_numbers = HashMap::new();
     for i in 1..=99 {
-        let numbers = pg.bingo_numbers(i);
-        println!(
-            "n={}, count={}, facters={:?}\nmin={}, max={}\n",
-            i,
-            numbers.len(),
-            pg.pf.prime_factors(i),
-            numbers.iter().min().unwrap(),
-            numbers.iter().max().unwrap(),
-        );
+        bingo_numbers.insert(i, pg.bingo_numbers(i));
+    }
+
+    for n in 1..=999 {
+        let mut s = Vec::new();
+        for k in 1..=99 {
+            if bingo_numbers[&k].contains(&BigRational::from_integer(BigInt::from(n))) {
+                s.push(k);
+            }
+        }
+        println!("{}: {:?}", n, s);
     }
 }
 
